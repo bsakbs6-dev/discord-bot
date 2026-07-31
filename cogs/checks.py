@@ -1,11 +1,12 @@
-import discord
-import aiosqlite
+import time
 
-from discord.ext import commands
+import discord
 from discord import app_commands
+from discord.ext import commands
 
 import config
-from utils import has_role, unix_after, now_date, now_time
+import database
+import utils
 
 
 class Checks(commands.Cog):
@@ -13,98 +14,69 @@ class Checks(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-
     @app_commands.command(
         name="проверка",
-        description="Выдать пользователю проверку"
+        description="Выдать игроку проверку"
     )
     async def check(
         self,
         interaction: discord.Interaction,
-        member: discord.Member
+        пользователь: discord.Member
     ):
 
-        if not has_role(interaction.user, config.STAFF_ROLES):
-            await interaction.response.send_message(
-                "❌ Недостаточно прав.",
+        if not utils.has_any_role(
+            interaction.user,
+            config.STAFF_ROLES
+        ):
+            return await interaction.response.send_message(
+                "❌ У вас недостаточно прав.",
                 ephemeral=True
             )
-            return
 
-        role = interaction.guild.get_role(config.CHECK_ROLE)
+        role = interaction.guild.get_role(
+            config.CHECK_ROLE
+        )
 
         if role is None:
-            await interaction.response.send_message(
-                "❌ Роль проверки не найдена.",
+            return await interaction.response.send_message(
+                "❌ Не найдена роль проверки.",
                 ephemeral=True
             )
-            return
 
-        if role in member.roles:
-            await interaction.response.send_message(
+        reject_role = interaction.guild.get_role(
+            config.REJECT_ROLE
+        )
+
+        if role in пользователь.roles:
+            return await interaction.response.send_message(
                 "❌ Игрок уже находится на проверке.",
                 ephemeral=True
             )
-            return
 
-        await member.add_roles(role)
+        if reject_role and reject_role in пользователь.roles:
+            await пользователь.remove_roles(reject_role)
 
-        expires = unix_after("7d")
+        await пользователь.add_roles(role)
 
-        async with aiosqlite.connect("moderation.db") as db:
+        expires = utils.create_check_timestamp()
 
-            await db.execute(
-                """
-                INSERT OR REPLACE INTO checks
-                VALUES (?, ?, ?)
-                """,
-                (
-                    member.id,
-                    interaction.user.id,
-                    expires
-                )
-            )
-
-            await db.commit()
-
-        embed = discord.Embed(
-            title="🔍 Проверка выдана",
-            color=0x2ECC71
+        await database.add_check(
+            пользователь.id,
+            interaction.user.id,
+            expires
         )
 
-        embed.add_field(
-            name="Игрок",
-            value=member.mention,
-            inline=False
+        embed = utils.log_embed(
+            title="🔍 Выдана проверка",
+            moderator=interaction.user,
+            target=пользователь
         )
 
-        embed.add_field(
-            name="Модератор",
-            value=interaction.user.mention,
-            inline=False
+        await utils.send_log(
+            self.bot,
+            embed
         )
-
-        embed.add_field(
-            name="Дата",
-            value=now_date(),
-            inline=True
-        )
-
-        embed.add_field(
-            name="Время",
-            value=now_time(),
-            inline=True
-        )
-
-        channel = self.bot.get_channel(config.LOG_CHANNEL_ID)
-
-        if channel:
-            await channel.send(embed=embed)
 
         await interaction.response.send_message(
-            f"✅ {member.mention} отправлен на проверку."
+            f"✅ {пользователь.mention} отправлен на проверку."
         )
-
-
-async def setup(bot):
-    await bot.add_cog(Checks(bot))
