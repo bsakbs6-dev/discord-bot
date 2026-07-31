@@ -1,39 +1,37 @@
 import re
-import discord
+import time
 from datetime import datetime
+
+import discord
 
 import config
 
-
-TIME_REGEX = re.compile(r"^(\d+)([smhdwy])$")
-
-
-# ==========================
-# Проверка ролей
-# ==========================
-
-def has_any_role(member: discord.Member, roles: list[int]) -> bool:
-    return any(role.id in roles for role in member.roles)
+TIME_PATTERN = re.compile(r"^(\d+)([smhdwy])$")
 
 
-# ==========================
-# Парсер времени
-# ==========================
+def has_any_role(member: discord.Member, allowed_roles: list[int]) -> bool:
+    """
+    Проверка наличия одной из разрешённых ролей.
+    """
+    return any(role.id in allowed_roles for role in member.roles)
+
 
 def parse_duration(duration: str) -> int:
     """
+    Поддерживает:
+    10s
     5m
     2h
     7d
-    3w
+    2w
     1y
     """
 
     duration = duration.lower()
 
-    match = TIME_REGEX.match(duration)
+    match = TIME_PATTERN.match(duration)
 
-    if not match:
+    if match is None:
         raise ValueError("Неверный формат времени.")
 
     value = int(match.group(1))
@@ -51,33 +49,37 @@ def parse_duration(duration: str) -> int:
     return value * table[unit]
 
 
-# ==========================
-# Красивое время
-# ==========================
+def create_timestamp(duration: str) -> int:
+    return int(time.time()) + parse_duration(duration)
 
-def now_date():
+
+def create_check_timestamp() -> int:
+    return int(time.time()) + config.CHECK_DAYS * 86400
+
+
+def create_reject_timestamp() -> int:
+    return int(time.time()) + config.REJECT_DAYS * 86400
+
+
+def current_date() -> str:
     return datetime.now().strftime("%d.%m.%Y")
 
 
-def now_time():
+def current_time() -> str:
     return datetime.now().strftime("%H:%M:%S")
 
 
-# ==========================
-# Embed логов
-# ==========================
-
-def create_log_embed(
-        action: str,
-        moderator: discord.Member,
-        target: discord.Member,
-        reason: str = "-",
-        duration: str = "-"
+def log_embed(
+    title: str,
+    moderator: discord.Member,
+    target: discord.Member,
+    reason: str = "-",
+    duration: str = "-"
 ):
 
     embed = discord.Embed(
-        title="LegionModer • Лог действия",
-        colour=discord.Colour.orange(),
+        title=title,
+        color=0x2F3136,
         timestamp=datetime.now()
     )
 
@@ -94,8 +96,8 @@ def create_log_embed(
     )
 
     embed.add_field(
-        name="⚙ Команда",
-        value=action,
+        name="📄 Причина",
+        value=reason,
         inline=False
     )
 
@@ -106,29 +108,19 @@ def create_log_embed(
     )
 
     embed.add_field(
-        name="📄 Причина",
-        value=reason,
-        inline=True
-    )
-
-    embed.add_field(
         name="📅 Дата",
-        value=now_date(),
+        value=current_date(),
         inline=True
     )
 
     embed.add_field(
         name="🕒 Время",
-        value=now_time(),
+        value=current_time(),
         inline=True
     )
 
     return embed
 
-
-# ==========================
-# Логирование
-# ==========================
 
 async def send_log(bot, embed):
 
