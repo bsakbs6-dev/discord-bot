@@ -1,18 +1,17 @@
 import os
+import asyncio
+
 import discord
 from discord.ext import commands
-from discord import app_commands
 from dotenv import load_dotenv
-
-import config
 
 load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
 
 intents = discord.Intents.default()
-intents.members = True
 intents.guilds = True
+intents.members = True
 intents.message_content = True
 
 bot = commands.Bot(
@@ -21,23 +20,41 @@ bot = commands.Bot(
 )
 
 
-def has_any_role(member: discord.Member, roles: list[int]) -> bool:
-    return any(role.id in roles for role in member.roles)
-
-
 @bot.event
 async def on_ready():
     print("=" * 40)
-    print(f"Бот запущен как {bot.user}")
-    print(f"discord.py {discord.__version__}")
-
-    try:
-        synced = await bot.tree.sync()
-        print(f"Slash-команд синхронизировано: {len(synced)}")
-    except Exception as e:
-        print(e)
-
+    print(f"✅ Бот запущен как {bot.user}")
+    print(f"ID: {bot.user.id}")
     print("=" * 40)
 
 
-bot.run(TOKEN)
+async def load_extensions():
+    extensions = [
+        "cogs.moderation",
+        "cogs.checks",
+        "cogs.staff",
+    ]
+
+    for extension in extensions:
+        try:
+            await bot.load_extension(extension)
+            print(f"✅ Загружен модуль {extension}")
+        except Exception as e:
+            print(f"❌ Ошибка загрузки {extension}")
+            print(e)
+
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ Синхронизировано {len(synced)} slash-команд")
+    except Exception as e:
+        print("❌ Ошибка синхронизации команд")
+        print(e)
+
+
+async def main():
+    async with bot:
+        await load_extensions()
+        await bot.start(TOKEN)
+
+
+asyncio.run(main())
